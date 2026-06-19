@@ -11,21 +11,25 @@
         h1 { font-size: 20px; margin-bottom: 20px; color: #f1f5f9; text-transform: uppercase; letter-spacing: 2px; }
         input { width: 100%; padding: 12px; background: #27272a; border: 1px solid #4b5563; border-radius: 6px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 12px; }
         button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
-        button:hover { background: #c2410c; }
+        button:hover { background: #c2410c; margin-top: 0px; }
+        button:disabled { background: #4b5563 !important; cursor: not-allowed; }
         .hidden { display: none; }
-        .status-box { background: #27272a; border: 1px dashed #4b5563; padding: 12px; margin: 12px 0; border-radius: 6px; }
-        .stat { font-size: 24px; font-weight: bold; color: #f97316; margin: 8px 0; }
+        .status-box { background: #27272a; border: 1px dashed #4b5563; padding: 10px; margin: 8px 0; border-radius: 6px; }
+        .stat { font-size: 24px; font-weight: bold; color: #f97316; margin: 4px 0; }
         #weather { font-size: 22px; color: #38bdf8; font-weight: bold; }
-        #warmth-bar { width: 100%; background: #27272a; height: 20px; border-radius: 10px; border: 1px solid #4b5563; overflow: hidden; margin-top: 5px; }
+        #timer-text { font-size: 22px; color: #a3e635; font-weight: bold; }
+        #warmth-bar { width: 100%; background: #27272a; height: 16px; border-radius: 10px; border: 1px solid #4b5563; overflow: hidden; margin-top: 5px; }
         #warmth-fill { height: 100%; width: 100%; background: #ef4444; transition: width 0.3s ease; }
-        #log { background: #09090b; padding: 10px; height: 120px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 4px; border: 1px solid #27272a; color: #a1a1aa; }
+        #log { background: #09090b; padding: 10px; height: 130px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 4px; border: 1px solid #27272a; color: #a1a1aa; margin-top: 10px; }
         #error-text { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: left; }
+        .btn-forest { background: #16a34a; margin-bottom: 10px; }
+        .btn-forest:hover { background: #15803d; }
     </style>
 </head>
 <body>
     <div id="lobby-screen" class="card">
         <h1>Сквозь Метель</h1>
-        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 15px;">Введите ваше имя и создайте перевал</p>
+        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 15px;">Укажите имя и создайте лагерь</p>
         
         <input type="text" id="nickname-input" placeholder="ВАШ НИКНЕЙМ" maxlength="12">
         <hr style="border: 1px solid #27272a; margin-bottom: 15px;">
@@ -39,20 +43,31 @@
 
     <div id="game-screen" class="card hidden">
         <h1 id="game-title">Перевал: ----</h1>
-        <div class="status-box">
-            <div>Погода:</div>
-            <div id="weather">Ясно</div>
+        
+        <div class="status-box" style="display: flex; justify-content: space-between; align-items: center;">
+            <span>До рассвета:</span>
+            <span id="timer-text">02:00</span>
         </div>
+
+        <div class="status-box">
+            <div>Погода: <span id="weather">Ясно</span></div>
+        </div>
+
         <div class="status-box">
             <div>Тепло в лагере: <span id="warmth-text">100%</span></div>
             <div id="warmth-bar"><div id="warmth-fill"></div></div>
         </div>
+
         <div class="status-box">
-            <div>Дрова:</div>
+            <div>Дрова на складе:</div>
             <div id="wood-count" class="stat">0</div>
         </div>
-        <button id="burn-btn" onclick="sendAction('add_wood')" style="margin-bottom: 20px; font-size: 18px; padding: 20px;">🔥 ПОД КИНУТЬ ДРОВ</button>
-        <button onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px; margin-bottom: 15px;">Переключить буран</button>
+
+        <button id="burn-btn" onclick="sendAction('burn_one_wood')" style="margin-bottom: 10px; font-size: 16px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР (+5% Тепла)</button>
+        <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС ЗА ДРОВАМИ</button>
+        
+        <button onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px;">Переключить буран</button>
+        
         <div id="log"></div>
     </div>
 
@@ -65,6 +80,12 @@
         let myId = "";
 
         function showErr(msg) { document.getElementById('error-text').innerText = msg; }
+
+        function formatTime(secs) {
+            let m = Math.floor(secs / 60).toString().padStart(2, '0');
+            let s = (secs % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
 
         function getNickname() {
             let nick = document.getElementById('nickname-input').value.trim();
@@ -96,21 +117,21 @@
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
                     
-                    if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE" || data.type === "GAME_OVER") {
+                    if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE" || data.type === "GAME_OVER" || data.type === "VICTORY") {
                         document.getElementById('wood-count').innerText = data.state.wood;
                         document.getElementById('weather').innerText = data.state.weather;
                         document.getElementById('weather').style.color = data.state.weather === "Буран" ? "#ef4444" : "#38bdf8";
                         
-                        // Обновляем полоску HP/тепла
+                        document.getElementById('timer-text').innerText = formatTime(data.state.time_left);
                         document.getElementById('warmth-text').innerText = data.state.warmth + "%";
                         document.getElementById('warmth-fill').style.width = data.state.warmth + "%";
                         
                         if (data.log) addLog(data.log);
 
                         if (data.state.game_over) {
-                            document.getElementById('burn-btn').disabled = true;
-                            document.getElementById('burn-btn').innerText = "ЗАМЕРЗЛИ";
-                            document.getElementById('burn-btn').style.background = "#4b5563";
+                            endGame("ЗАМЕРЗЛИ", "#ef4444");
+                        } else if (data.state.victory) {
+                            endGame("РАССВЕТ!", "#a3e635");
                         }
                     } else if (data.type === "PLAYER_JOINED") { 
                         addLog(`⛺ ${data.player_id} у костра.`); 
@@ -118,6 +139,28 @@
                 };
                 ws.onerror = () => { showErr("Ошибка WebSocket"); };
             } catch(e) { showErr(e.message); }
+        }
+
+        function goToForest() {
+            let btn = document.getElementById('forest-btn');
+            btn.disabled = true;
+            btn.innerText = "⏳ ИЩЕМ ДРОВА В ЛЕСУ (3с)...";
+            
+            sendAction('go_to_forest');
+            
+            setTimeout(() => {
+                if(document.getElementById('burn-btn').innerText !== "ЗАМЕРЗЛИ" && document.getElementById('burn-btn').innerText !== "РАССВЕТ!") {
+                    btn.disabled = false;
+                    btn.innerText = "🌲 СХОДИТЬ В ЛЕС ЗА ДРОВАМИ";
+                }
+            }, 3000);
+        }
+
+        function endGame(msg, color) {
+            document.getElementById('burn-btn').disabled = true;
+            document.getElementById('forest-btn').disabled = true;
+            document.getElementById('burn-btn').innerText = msg;
+            document.getElementById('burn-btn').style.background = color;
         }
 
         function sendAction(act) {
