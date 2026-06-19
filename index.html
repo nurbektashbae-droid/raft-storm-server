@@ -6,17 +6,16 @@
     <title>Перевал: Сквозь Метель</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #121213; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+        body { background: #121213; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
         .card { background: #1e1e24; border: 2px solid #3f3f46; border-radius: 12px; padding: 24px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
         h1 { font-size: 20px; margin-bottom: 20px; color: #f1f5f9; text-transform: uppercase; letter-spacing: 2px; }
         input, select { width: 100%; padding: 12px; background: #27272a; border: 1px solid #4b5563; border-radius: 6px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 12px; }
         select { text-align-last: center; }
-        button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: background 0.2s; }
+        button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
         button:hover { background: #c2410c; }
         button:disabled { background: #4b5563 !important; cursor: not-allowed; }
         .hidden { display: none; }
         .status-box { background: #27272a; border: 1px dashed #4b5563; padding: 10px; margin: 8px 0; border-radius: 6px; }
-        .stat { font-size: 24px; font-weight: bold; color: #f97316; margin: 4px 0; }
         #weather { font-size: 22px; color: #38bdf8; font-weight: bold; }
         #timer-text { font-size: 22px; color: #a3e635; font-weight: bold; }
         .bar { width: 100%; background: #27272a; height: 16px; border-radius: 10px; border: 1px solid #4b5563; overflow: hidden; margin-top: 5px; }
@@ -111,10 +110,15 @@
         let costModifier = 0;
         let gameIsEnded = false;
 
-        function showErr(msg) { document.getElementById('error-text').innerText = msg; }
-        function formatTime(secs) {
-            return `${Math.floor(secs / 60).toString().padStart(2, '0')}:${(secs % 60).toString().padStart(2, '0')}`;
+        function showErr(msg) { 
+            const errEl = document.getElementById('error-text');
+            if (errEl) errEl.innerText = msg; 
         }
+        
+        function formatTime(secs) {
+            return `\( {Math.floor(secs / 60).toString().padStart(2, '0')}: \){(secs % 60).toString().padStart(2, '0')}`;
+        }
+        
         function getNickname() {
             let nick = document.getElementById('nickname-input').value.trim();
             return nick ? nick : "Странник_" + Math.floor(Math.random() * 100);
@@ -136,22 +140,29 @@
 
         async function createRoom() {
             try {
-                let response = await fetch(`${PROTOCOL}//${HOST}/create_room`);
+                let response = await fetch(`\( {PROTOCOL}// \){HOST}/create_room`);
+                if (!response.ok) throw new Error('Ошибка сервера');
                 let data = await response.json();
                 document.getElementById('room-input').value = data.room_code;
                 joinRoom();
-            } catch (e) { showErr("Ошибка: " + e.message); }
+            } catch (e) { 
+                showErr("Ошибка создания комнаты: " + e.message); 
+            }
         }
 
         function joinRoom() {
             let code = document.getElementById('room-input').value.trim().toUpperCase();
-            if (code.length !== 4) return alert("Введите 4 буквы!");
+            if (code.length !== 4) {
+                showErr("Введите 4 буквы!");
+                return;
+            }
             
             myId = getNickname();
             let selectedRole = document.getElementById('role-input').value;
 
             try {
-                ws = new WebSocket(`${WS_PROTOCOL}//${HOST}/ws/${code}/${myId}/${selectedRole}`);
+                ws = new WebSocket(`\( {WS_PROTOCOL}// \){HOST}/ws/\( {code}/ \){myId}/${selectedRole}`);
+                
                 ws.onopen = () => {
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('game-screen').classList.remove('hidden');
@@ -159,40 +170,58 @@
                     gameIsEnded = false;
                     updateStaminaUI();
                 };
+                
                 ws.onmessage = (event) => {
-                    let data = JSON.parse(event.data);
+                    let data;
+                    try {
+                        data = JSON.parse(event.data);
+                    } catch(e) {
+                        return;
+                    }
                     
                     if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE" || data.type === "GAME_OVER" || data.type === "VICTORY") {
-                        globalWood = data.state.wood;
+                        // Обновляем stamina из сервера (если приходит)
+                        if (data.state && typeof data.state.player_stamina !== 'undefined') {
+                            myStamina = Math.max(0, Math.min(100, data.state.player_stamina));
+                        }
+                        
+                        globalWood = data.state.wood || 0;
                         document.getElementById('wood-count').innerText = globalWood;
-                        document.getElementById('weather').innerText = data.state.weather;
-                        document.getElementById('weather').style.color = data.state.weather === "Буран" ? "#ef4444" : "#38bdf8";
                         
-                        document.getElementById('timer-text').innerText = formatTime(data.state.time_left);
-                        document.getElementById('warmth-text').innerText = data.state.warmth + "%";
-                        document.getElementById('warmth-fill').style.width = data.state.warmth + "%";
+                        document.getElementById('weather').innerText = data.state.weather || "Ясно";
+                        document.getElementById('weather').style.color = (data.state.weather === "Буран") ? "#ef4444" : "#38bdf8";
                         
-                        // Эффект шарфов (снижает затраты выносливости)
+                        document.getElementById('timer-text').innerText = formatTime(data.state.time_left || 120);
+                        document.getElementById('warmth-text').innerText = (data.state.warmth || 100) + "%";
+                        document.getElementById('warmth-fill').style.width = (data.state.warmth || 100) + "%";
+                        
+                        // Эффект шарфов
                         if (data.state.upgrades && data.state.upgrades.scarfs) {
                             costModifier = 5;
-                            document.getElementById('up-scarfs').innerText = "🧣 Шарфы [КУПЛЕНО]";
-                            document.getElementById('up-scarfs').disabled = true;
+                            const scarfBtn = document.getElementById('up-scarfs');
+                            scarfBtn.innerText = "🧣 Шарфы [КУПЛЕНО]";
+                            scarfBtn.disabled = true;
                         } else {
                             costModifier = 0;
-                            document.getElementById('up-scarfs').innerText = "🧣 Теплые Шарфы (20 дров)";
-                            document.getElementById('up-scarfs').disabled = (globalWood < 20);
+                            const scarfBtn = document.getElementById('up-scarfs');
+                            scarfBtn.innerText = "🧣 Теплые Шарфы (20 дров)";
+                            scarfBtn.disabled = (globalWood < 20);
                         }
 
+                        // Навес
                         if (data.state.upgrades && data.state.upgrades.canopy) {
-                            document.getElementById('up-canopy').innerText = "⛺ Навес [КУПЛЕНО]";
-                            document.getElementById('up-canopy').disabled = true;
+                            const canopyBtn = document.getElementById('up-canopy');
+                            canopyBtn.innerText = "⛺ Навес [КУПЛЕНО]";
+                            canopyBtn.disabled = true;
                         } else {
                             document.getElementById('up-canopy').disabled = (globalWood < 25);
                         }
 
+                        // Топоры
                         if (data.state.upgrades && data.state.upgrades.axes) {
-                            document.getElementById('up-axes').innerText = "🪓 Топоры [КУПЛЕНО]";
-                            document.getElementById('up-axes').disabled = true;
+                            const axesBtn = document.getElementById('up-axes');
+                            axesBtn.innerText = "🪓 Топоры [КУПЛЕНО]";
+                            axesBtn.disabled = true;
                         } else {
                             document.getElementById('up-axes').disabled = (globalWood < 30);
                         }
@@ -206,10 +235,10 @@
                             document.getElementById('restart-btn').classList.remove('hidden');
                         } else {
                             if (data.type === "INIT_STATE") {
-                                // Если перезапустили игру
                                 gameIsEnded = false;
-                                document.getElementById('burn-btn').style.background = "#ea580c";
-                                document.getElementById('burn-btn').innerText = `🔥 БРОСИТЬ ДРОВО В КОСТЁР (-${15 - costModifier} Энергии)`;
+                                const burnBtn = document.getElementById('burn-btn');
+                                burnBtn.style.background = "#ea580c";
+                                burnBtn.innerText = `🔥 БРОСИТЬ ДРОВО В КОСТЁР (-${15 - costModifier} Энергии)`;
                             }
                             document.getElementById('restart-btn').classList.add('hidden');
                         }
@@ -218,8 +247,12 @@
                         addLog(`⛺ ${data.player_id} у костра.`); 
                     }
                 };
-                ws.onerror = () => { showErr("Ошибка WebSocket"); };
-            } catch(e) { showErr(e.message); }
+                
+                ws.onerror = () => { showErr("Ошибка подключения WebSocket"); };
+                ws.onclose = () => { showErr("Соединение закрыто"); };
+            } catch(e) { 
+                showErr("Ошибка: " + e.message); 
+            }
         }
 
         function setButtonsDisabled(status) {
@@ -274,8 +307,9 @@
         function endGame(msg, color) {
             gameIsEnded = true;
             setButtonsDisabled(true);
-            document.getElementById('burn-btn').innerText = msg;
-            document.getElementById('burn-btn').style.background = color;
+            const burnBtn = document.getElementById('burn-btn');
+            burnBtn.innerText = msg;
+            burnBtn.style.background = color;
         }
 
         function sendAction(act) {
