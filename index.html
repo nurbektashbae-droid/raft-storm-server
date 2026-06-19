@@ -17,6 +17,7 @@
         .stat { font-size: 24px; font-weight: bold; color: #f97316; margin: 8px 0; }
         #weather { font-size: 22px; color: #38bdf8; font-weight: bold; }
         #log { background: #09090b; padding: 10px; height: 120px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 4px; border: 1px solid #27272a; color: #a1a1aa; }
+        #error-text { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: left; word-break: break-all; }
     </style>
 </head>
 <body>
@@ -28,6 +29,7 @@
         <div style="margin: 10px 0; color: #71717a;">— ИЛИ —</div>
         <input type="text" id="room-input" placeholder="КОД ИГРЫ" maxlength="4">
         <button onclick="joinRoom()">Войти в бурю</button>
+        <div id="error-text"></div>
     </div>
 
     <div id="game-screen" class="card hidden">
@@ -50,18 +52,27 @@
     </div>
 
     <script>
-        const SERVER_URL = "raft-storm-server.onrender.com";
+        // Проверь этот адрес! Если в Render он немного другой, просто исправь эту строчку
+        const SERVER_HOST = "raft-storm-server.onrender.com"; 
+        
         let ws;
         let myId = "Игрок_" + Math.floor(Math.random() * 1000);
 
+        function showErr(err) {
+            document.getElementById('error-text').innerText = "Лог ошибки: " + err;
+        }
+
         async function createRoom() {
+            showErr("Подключение к серверу...");
             try {
-                let response = await fetch(`https://${SERVER_URL}/create_room`);
+                let response = await fetch(`https://${SERVER_HOST}/create_room`);
+                if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
                 let data = await response.json();
                 document.getElementById('room-input').value = data.room_code;
+                showErr("");
                 joinRoom();
             } catch (e) {
-                alert("Ошибка подключения к серверу. Подождите 30 сек, пока Render просыпается.");
+                showErr(`Не удалось создать комнату. Причина: ${e.message}. Попробуйте еще раз через 10 секунд.`);
             }
         }
 
@@ -69,42 +80,48 @@
             let code = document.getElementById('room-input').value.trim().toUpperCase();
             if (code.length !== 4) return alert("Код должен состоять из 4 букв!");
 
-            // Подключаемся по WebSocket
-            ws = new WebSocket(`wss://${SERVER_URL}/ws/${code}/${myId}`);
+            try {
+                // Используем wss:// для защищенного соединения вебсокетов
+                ws = new WebSocket(`wss://${SERVER_HOST}/ws/${code}/${myId}`);
 
-            ws.onopen = () => {
-                document.getElementById('lobby-screen').classList.add('hidden');
-                document.getElementById('game-screen').classList.remove('hidden');
-                document.getElementById('game-title').innerText = `Перевал: ${code}`;
-            };
+                ws.onopen = () => {
+                    document.getElementById('lobby-screen').classList.add('hidden');
+                    document.getElementById('game-screen').classList.remove('hidden');
+                    document.getElementById('game-title').innerText = `Перевал: ${code}`;
+                };
 
-            ws.onmessage = (event) => {
-                let data = JSON.parse(event.data);
-                
-                if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE") {
-                    document.getElementById('wood-count').innerText = data.state.wood;
-                    document.getElementById('weather').innerText = data.state.weather;
+                ws.onmessage = (event) => {
+                    let data = JSON.parse(event.data);
                     
-                    if (data.state.weather === "Буран") {
-                        document.getElementById('weather').style.color = "#ef4444";
-                    } else {
-                        document.getElementById('weather').style.color = "#38bdf8";
-                    }
+                    if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE") {
+                        document.getElementById('wood-count').innerText = data.state.wood;
+                        document.getElementById('weather').innerText = data.state.weather;
+                        
+                        if (data.state.weather === "Буран") {
+                            document.getElementById('weather').style.color = "#ef4444";
+                        } else {
+                            document.getElementById('weather').style.color = "#38bdf8";
+                        }
 
-                    if (data.log) {
-                        addLog(data.log);
+                        if (data.log) addLog(data.log);
+                    } else if (data.type === "PLAYER_JOINED") {
+                        addLog(`⛺ ${data.player_id} подошел к костру.`);
+                    } else if (data.type === "PLAYER_LEFT") {
+                        addLog(`❄️ ${data.player_id} затерялся в метели.`);
                     }
-                } else if (data.type === "PLAYER_JOINED") {
-                    addLog(`⛺ ${data.player_id} подошел к костру.`);
-                } else if (data.type === "PLAYER_LEFT") {
-                    addLog(`❄️ ${data.player_id} затерялся в метели.`);
-                }
-            };
+                };
 
-            ws.onclose = () => {
-                alert("Связь с сервером потеряна.");
-                location.reload();
-            };
+                ws.onerror = (err) => {
+                    showErr("Ошибка WebSocket соединения. Возможно, неверный URL сервера.");
+                };
+
+                ws.onclose = () => {
+                    addLog("Сессия закрыта.");
+                };
+
+            } catch(e) {
+                showErr(`Ошибка создания WebSocket: ${e.message}`);
+            }
         }
 
         function sendAction(actionName) {
