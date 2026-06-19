@@ -19,12 +19,15 @@
         .stat { font-size: 24px; font-weight: bold; color: #f97316; margin: 4px 0; }
         #weather { font-size: 22px; color: #38bdf8; font-weight: bold; }
         #timer-text { font-size: 22px; color: #a3e635; font-weight: bold; }
-        #warmth-bar { width: 100%; background: #27272a; height: 16px; border-radius: 10px; border: 1px solid #4b5563; overflow: hidden; margin-top: 5px; }
-        #warmth-fill { height: 100%; width: 100%; background: #ef4444; transition: width 0.3s ease; }
-        #log { background: #09090b; padding: 10px; height: 130px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 4px; border: 1px solid #27272a; color: #a1a1aa; margin-top: 10px; }
+        .bar { width: 100%; background: #27272a; height: 16px; border-radius: 10px; border: 1px solid #4b5563; overflow: hidden; margin-top: 5px; }
+        .fill-warmth { height: 100%; width: 100%; background: #ef4444; transition: width 0.3s ease; }
+        .fill-stamina { height: 100%; width: 100%; background: #eab308; transition: width 0.3s ease; }
+        #log { background: #09090b; padding: 10px; height: 120px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 4px; border: 1px solid #27272a; color: #a1a1aa; margin-top: 10px; }
         #error-text { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: left; }
         .btn-forest { background: #16a34a; margin-bottom: 10px; }
         .btn-forest:hover { background: #15803d; }
+        .btn-rest { background: #2563eb; margin-bottom: 10px; }
+        .btn-rest:hover { background: #1d4ed8; }
     </style>
 </head>
 <body>
@@ -63,7 +66,12 @@
 
         <div class="status-box">
             <div>Тепло в лагере: <span id="warmth-text">100%</span></div>
-            <div id="warmth-bar"><div id="warmth-fill"></div></div>
+            <div class="bar"><div id="warmth-fill" class="fill-warmth"></div></div>
+        </div>
+
+        <div class="status-box" style="border-color: #eab308;">
+            <div>Ваша Выносливость: <span id="stamina-text">100%</span></div>
+            <div class="bar"><div id="stamina-fill" class="fill-stamina"></div></div>
         </div>
 
         <div class="status-box">
@@ -71,9 +79,12 @@
             <div id="wood-count" class="stat">0</div>
         </div>
 
-        <button id="burn-btn" onclick="sendAction('burn_one_wood')" style="margin-bottom: 10px; font-size: 15px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР</button>
-        <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС ЗА ДРОВАМИ</button>
-        <button onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px;">Переключить буран</button>
+        <button id="burn-btn" onclick="burnWood()" style="margin-bottom: 10px; font-size: 15px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР (-15 Энергии)</button>
+        <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС (-35 Энергии)</button>
+        <button id="rest-btn" class="btn-rest" onclick="restAtCamp()">💤 ОТДОХНУТЬ У КОСТРА (Восстановить силы)</button>
+        
+        <button id="weather-btn" onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px;">Переключить буран</button>
+        <button id="restart-btn" class="hidden" onclick="sendAction('restart_game')" style="background: #2563eb; margin-top: 10px;">🔄 НАЧАТЬ НОВУЮ НОЧЬ</button>
         
         <div id="log"></div>
     </div>
@@ -85,6 +96,8 @@
         
         let ws;
         let myId = "";
+        let myStamina = 100;
+        let isActionLocked = false;
 
         function showErr(msg) { document.getElementById('error-text').innerText = msg; }
         function formatTime(secs) {
@@ -93,6 +106,17 @@
         function getNickname() {
             let nick = document.getElementById('nickname-input').value.trim();
             return nick ? nick : "Странник_" + Math.floor(Math.random() * 100);
+        }
+
+        function updateStaminaUI() {
+            document.getElementById('stamina-text').innerText = myStamina + "%";
+            document.getElementById('stamina-fill').style.width = myStamina + "%";
+            
+            // Если залочено кулдауном, кнопки и так выключены
+            if (!isActionLocked) {
+                document.getElementById('burn-btn').disabled = (myStamina < 15);
+                document.getElementById('forest-btn').disabled = (myStamina < 35);
+            }
         }
 
         async function createRoom() {
@@ -112,12 +136,12 @@
             let selectedRole = document.getElementById('role-input').value;
 
             try {
-                // Добавляем параметр роли в URL вебсокета
                 ws = new WebSocket(`${WS_PROTOCOL}//${HOST}/ws/${code}/${myId}/${selectedRole}`);
                 ws.onopen = () => {
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('game-screen').classList.remove('hidden');
                     document.getElementById('game-title').innerText = `Перевал: ${code}`;
+                    updateStaminaUI();
                 };
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
@@ -133,8 +157,13 @@
                         
                         if (data.log) addLog(data.log);
 
-                        if (data.state.game_over) endGame("ЗАМЕРЗЛИ", "#ef4444");
-                        else if (data.state.victory) endGame("РАССВЕТ!", "#a3e635");
+                        if (data.state.game_over) endGame("💀 ЗАМЕРЗЛИ", "#ef4444");
+                        else if (data.state.victory) endGame("☀️ РАССВЕТ!", "#a3e635");
+                        else {
+                            // Если игра идет, прячем кнопку рестарта и возвращаем интерфейс
+                            document.getElementById('restart-btn').classList.add('hidden');
+                            if (!isActionLocked) setButtonsDisabled(false);
+                        }
                     } else if (data.type === "PLAYER_JOINED") { 
                         addLog(`⛺ ${data.player_id} у костра.`); 
                     }
@@ -143,24 +172,56 @@
             } catch(e) { showErr(e.message); }
         }
 
+        function setButtonsDisabled(status) {
+            document.getElementById('burn-btn').disabled = status;
+            document.getElementById('forest-btn').disabled = status;
+            document.getElementById('rest-btn').disabled = status;
+        }
+
+        function burnWood() {
+            if (myStamina < 15) return;
+            myStamina -= 15;
+            updateStaminaUI();
+            sendAction('burn_one_wood');
+        }
+
         function goToForest() {
-            let btn = document.getElementById('forest-btn');
-            btn.disabled = true;
-            btn.innerText = "⏳ В ЛЕСУ (3с)...";
+            if (myStamina < 35) return;
+            myStamina -= 35;
+            isActionLocked = true;
+            setButtonsDisabled(true);
+            
+            document.getElementById('forest-btn').innerText = "⏳ В ЛЕСУ (3с)...";
             sendAction('go_to_forest');
+            
             setTimeout(() => {
-                if(document.getElementById('burn-btn').innerText !== "ЗАМЕРЗЛИ" && document.getElementById('burn-btn').innerText !== "РАССВЕТ!") {
-                    btn.disabled = false;
-                    btn.innerText = "🌲 СХОДИТЬ В ЛЕС ЗА ДРОВАМИ";
-                }
+                isActionLocked = false;
+                document.getElementById('forest-btn').innerText = "🌲 СХОДИТЬ В ЛЕС (-35 Энергии)";
+                updateStaminaUI();
+                setButtonsDisabled(false);
             }, 3000);
         }
 
+        function restAtCamp() {
+            isActionLocked = true;
+            setButtonsDisabled(true);
+            document.getElementById('rest-btn').innerText = "⏳ ОТДЫХАЕМ (4с)...";
+            
+            setTimeout(() => {
+                myStamina = Math.min(100, myStamina + 50);
+                isActionLocked = false;
+                document.getElementById('rest-btn').innerText = "💤 ОТДОХНУТЬ У КОСТРА";
+                updateStaminaUI();
+                setButtonsDisabled(false);
+                addLog("💤 Вы немного перевели дух и восстановили силы.");
+            }, 4000);
+        }
+
         function endGame(msg, color) {
-            document.getElementById('burn-btn').disabled = true;
-            document.getElementById('forest-btn').disabled = true;
+            setButtonsDisabled(true);
             document.getElementById('burn-btn').innerText = msg;
             document.getElementById('burn-btn').style.background = color;
+            document.getElementById('restart-btn').classList.remove('hidden');
         }
 
         function sendAction(act) {
