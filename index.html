@@ -99,7 +99,7 @@
 
     <script>
         const HOST = window.location.host;
-        const PROTOCOL = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        const PROTOCOL = window.location.protocol;
         const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         let ws;
@@ -116,7 +116,9 @@
         }
         
         function formatTime(secs) {
-            return `\( {Math.floor(secs / 60).toString().padStart(2, '0')}: \){(secs % 60).toString().padStart(2, '0')}`;
+            let m = Math.floor(secs / 60).toString().padStart(2, '0');
+            let s = (secs % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
         }
         
         function getNickname() {
@@ -140,7 +142,7 @@
 
         async function createRoom() {
             try {
-                let response = await fetch(`\( {PROTOCOL}// \){HOST}/create_room`);
+                let response = await fetch(`${PROTOCOL}//${HOST}/create_room`);
                 if (!response.ok) throw new Error('Ошибка сервера');
                 let data = await response.json();
                 document.getElementById('room-input').value = data.room_code;
@@ -161,7 +163,7 @@
             let selectedRole = document.getElementById('role-input').value;
 
             try {
-                ws = new WebSocket(`\( {WS_PROTOCOL}// \){HOST}/ws/\( {code}/ \){myId}/${selectedRole}`);
+                ws = new WebSocket(`${WS_PROTOCOL}//${HOST}/ws/${code}/${myId}/${selectedRole}`);
                 
                 ws.onopen = () => {
                     document.getElementById('lobby-screen').classList.add('hidden');
@@ -180,7 +182,6 @@
                     }
                     
                     if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE" || data.type === "GAME_OVER" || data.type === "VICTORY") {
-                        // Обновляем stamina из сервера (если приходит)
                         if (data.state && typeof data.state.player_stamina !== 'undefined') {
                             myStamina = Math.max(0, Math.min(100, data.state.player_stamina));
                         }
@@ -290,39 +291,4 @@
         }
 
         function restAtCamp() {
-            if (isActionLocked || gameIsEnded) return;
-            isActionLocked = true;
-            setButtonsDisabled(true);
-            document.getElementById('rest-btn').innerText = "⏳ ОТДЫХАЕМ (4с)...";
-            
-            setTimeout(() => {
-                myStamina = Math.min(100, myStamina + 50);
-                isActionLocked = false;
-                document.getElementById('rest-btn').innerText = "💤 ОТДОХНУТЬ У КОСТРА";
-                updateStaminaUI();
-                addLog("💤 Вы восстановили силы у огня.");
-            }, 4000);
-        }
-
-        function endGame(msg, color) {
-            gameIsEnded = true;
-            setButtonsDisabled(true);
-            const burnBtn = document.getElementById('burn-btn');
-            burnBtn.innerText = msg;
-            burnBtn.style.background = color;
-        }
-
-        function sendAction(act) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ action: act }));
-            }
-        }
-
-        function addLog(txt) {
-            let logDiv = document.getElementById('log');
-            logDiv.innerHTML += `<div>` + txt + `</div>`;
-            logDiv.scrollTop = logDiv.scrollHeight;
-        }
-    </script>
-</body>
-</html>
+            if (isActionLocked ||
