@@ -9,9 +9,10 @@
         body { background: #121213; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
         .card { background: #1e1e24; border: 2px solid #3f3f46; border-radius: 12px; padding: 24px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
         h1 { font-size: 20px; margin-bottom: 20px; color: #f1f5f9; text-transform: uppercase; letter-spacing: 2px; }
-        input { width: 100%; padding: 12px; background: #27272a; border: 1px solid #4b5563; border-radius: 6px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 12px; }
+        input, select { width: 100%; padding: 12px; background: #27272a; border: 1px solid #4b5563; border-radius: 6px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 12px; }
+        select { text-align-last: center; }
         button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
-        button:hover { background: #c2410c; margin-top: 0px; }
+        button:hover { background: #c2410c; }
         button:disabled { background: #4b5563 !important; cursor: not-allowed; }
         .hidden { display: none; }
         .status-box { background: #27272a; border: 1px dashed #4b5563; padding: 10px; margin: 8px 0; border-radius: 6px; }
@@ -29,9 +30,16 @@
 <body>
     <div id="lobby-screen" class="card">
         <h1>Сквозь Метель</h1>
-        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 15px;">Укажите имя и создайте лагерь</p>
+        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 15px;">Выберите роль и создайте лагерь</p>
         
         <input type="text" id="nickname-input" placeholder="ВАШ НИКНЕЙМ" maxlength="12">
+        
+        <select id="role-input">
+            <option value="lumberjack">🪓 Дровосек (+Дрова, Риск меньше)</option>
+            <option value="keeper">🔥 Хранитель костра (+Эффект тепла)</option>
+            <option value="scout">🧭 Проводник (Меньше теряется в буран)</option>
+        </select>
+        
         <hr style="border: 1px solid #27272a; margin-bottom: 15px;">
         
         <button onclick="createRoom()" style="background: #2563eb; margin-bottom: 12px;">Создать перевал</button>
@@ -63,9 +71,8 @@
             <div id="wood-count" class="stat">0</div>
         </div>
 
-        <button id="burn-btn" onclick="sendAction('burn_one_wood')" style="margin-bottom: 10px; font-size: 16px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР (+5% Тепла)</button>
+        <button id="burn-btn" onclick="sendAction('burn_one_wood')" style="margin-bottom: 10px; font-size: 15px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР</button>
         <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС ЗА ДРОВАМИ</button>
-        
         <button onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px;">Переключить буран</button>
         
         <div id="log"></div>
@@ -80,13 +87,9 @@
         let myId = "";
 
         function showErr(msg) { document.getElementById('error-text').innerText = msg; }
-
         function formatTime(secs) {
-            let m = Math.floor(secs / 60).toString().padStart(2, '0');
-            let s = (secs % 60).toString().padStart(2, '0');
-            return `${m}:${s}`;
+            return `${Math.floor(secs / 60).toString().padStart(2, '0')}:${(secs % 60).toString().padStart(2, '0')}`;
         }
-
         function getNickname() {
             let nick = document.getElementById('nickname-input').value.trim();
             return nick ? nick : "Странник_" + Math.floor(Math.random() * 100);
@@ -103,12 +106,14 @@
 
         function joinRoom() {
             let code = document.getElementById('room-input').value.trim().toUpperCase();
-            if (code.length !== 4) return alert("Введите 4 буквы кода!");
+            if (code.length !== 4) return alert("Введите 4 буквы!");
             
             myId = getNickname();
+            let selectedRole = document.getElementById('role-input').value;
 
             try {
-                ws = new WebSocket(`${WS_PROTOCOL}//${HOST}/ws/${code}/${myId}`);
+                // Добавляем параметр роли в URL вебсокета
+                ws = new WebSocket(`${WS_PROTOCOL}//${HOST}/ws/${code}/${myId}/${selectedRole}`);
                 ws.onopen = () => {
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('game-screen').classList.remove('hidden');
@@ -128,11 +133,8 @@
                         
                         if (data.log) addLog(data.log);
 
-                        if (data.state.game_over) {
-                            endGame("ЗАМЕРЗЛИ", "#ef4444");
-                        } else if (data.state.victory) {
-                            endGame("РАССВЕТ!", "#a3e635");
-                        }
+                        if (data.state.game_over) endGame("ЗАМЕРЗЛИ", "#ef4444");
+                        else if (data.state.victory) endGame("РАССВЕТ!", "#a3e635");
                     } else if (data.type === "PLAYER_JOINED") { 
                         addLog(`⛺ ${data.player_id} у костра.`); 
                     }
@@ -144,10 +146,8 @@
         function goToForest() {
             let btn = document.getElementById('forest-btn');
             btn.disabled = true;
-            btn.innerText = "⏳ ИЩЕМ ДРОВА В ЛЕСУ (3с)...";
-            
+            btn.innerText = "⏳ В ЛЕСУ (3с)...";
             sendAction('go_to_forest');
-            
             setTimeout(() => {
                 if(document.getElementById('burn-btn').innerText !== "ЗАМЕРЗЛИ" && document.getElementById('burn-btn').innerText !== "РАССВЕТ!") {
                     btn.disabled = false;
