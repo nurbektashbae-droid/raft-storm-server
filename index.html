@@ -49,8 +49,8 @@
     <script>
         const HOST = window.location.host;
         const PROTOCOL = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        
+        const WS_PROTOCOL = 'wss:'; // Жестко прописываем безопасное соединение
+
         let ws;
         let myId = "Игрок_" + Math.floor(Math.random() * 1000);
 
