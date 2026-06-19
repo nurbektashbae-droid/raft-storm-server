@@ -24,15 +24,19 @@ def read_root():
 def get_initial_state():
     return {
         "weather": "Ясно", 
-        "wood": 15, 
+        "wood": 20, # Немного подняли стартовый запас для покупок
         "warmth": 100, 
         "time_left": 120, 
         "game_over": False, 
-        "victory": False
+        "victory": False,
+        "upgrades": {
+            "canopy": false,  # Навес
+            "axes": false,    # Топоры
+            "scarfs": false   # Шарфы
+        }
     }
 
 async def room_tick(room_code: str):
-    """Фоновый цикл: каждую секунду горит костер, тикает время и происходят ивенты"""
     event_timer = 0
     while room_code in rooms:
         await asyncio.sleep(1)
@@ -43,20 +47,18 @@ async def room_tick(room_code: str):
         state = room["state"]
         
         if state["game_over"] or state["victory"]:
-            continue  # Не тикаем, если игра завершена, ждем рестарта
+            continue
 
-        # Таймер рассвета
         if state["time_left"] > 0:
             state["time_left"] -= 1
         else:
             state["victory"] = True
             await manager.broadcast_to_room(room_code, {
                 "type": "VICTORY", "state": state,
-                "log": "☀️ Рассвет! Метель утихла, вы смогли пережить эту ночь! 🎉"
+                "log": "☀️ Рассвет! Вы пережили эту ночь! Можете закупиться улучшениями перед следующей каткой. 🎉"
             })
             continue
 
-        # Случайные события (раз в 25 секунд)
         event_timer += 1
         if event_timer >= 25:
             event_timer = 0
@@ -66,13 +68,15 @@ async def room_tick(room_code: str):
                 state["wood"] += bonus
                 await manager.broadcast_to_room(room_code, {
                     "type": "STATE_UPDATE", "state": state,
-                    "log": f"📦 Событие: Ветер принёс сухие ветки к лагерю! (+{bonus} дров)"
+                    "log": f"📦 Событие: Ветер принёс сухие ветки! (+{bonus} дров)"
                 })
             elif event_type == "curse":
-                state["warmth"] = max(0, state["warmth"] - 15)
+                # Если куплен навес, урон от порыва ветра меньше (10 вместо 15)
+                damage = 10 if state["upgrades"].get("canopy") else 15
+                state["warmth"] = max(0, state["warmth"] - damage)
+                log_msg = "💨 Событие: Навес защитил от ветра!" if damage == 10 else "💨 Событие: Ледяной порыв ветра пронзает до костей! (-15% тепла)"
                 await manager.broadcast_to_room(room_code, {
-                    "type": "STATE_UPDATE", "state": state,
-                    "log": "💨 Событие: Ледяной порыв ветра пронзает до костей! (-15% тепла)"
+                    "type": "STATE_UPDATE", "state": state, "log": log_msg
                 })
 
         # Сгорание дров
@@ -82,14 +86,16 @@ async def room_tick(room_code: str):
             state["warmth"] = min(100, state["warmth"] + 1)
         else:
             cold_speed = 5 if state["weather"] == "Буран" else 2
+            # Навес снижает скорость замерзания при отсутствии дров
+            if state["upgrades"].get("canopy") and state["weather"] == "Буран":
+                cold_speed = 3
             state["warmth"] = max(0, state["warmth"] - cold_speed)
 
-        # Проверка на проигрыш
         if state["warmth"] <= 0:
             state["game_over"] = True
             await manager.broadcast_to_room(room_code, {
                 "type": "GAME_OVER", "state": state,
-                "log": "💀 Лагерь полностью замерз... Буря оказалась сильнее."
+                "log": "💀 Лагерь полностью замерз..."
             })
 
         await manager.broadcast_to_room(room_code, {"type": "STATE_UPDATE", "state": state})
@@ -105,7 +111,6 @@ class ConnectionManager:
                 "task": None
             }
             rooms[room_code]["task"] = asyncio.create_task(room_tick(room_code))
-            
         rooms[room_code]["players"][player_id] = websocket
 
     def disconnect(self, room_code: str, player_id: str):
@@ -157,14 +162,33 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
             state = rooms[room_code]["state"]
             action = data.get("action")
             
-            # Логика перезапуска игры кнопкой
             if action == "restart_game":
+                # При перезапуске сохраняем апгрейды лагеря!
+                current_upgrades = state["upgrades"]
                 rooms[room_code]["state"] = get_initial_state()
+                rooms[room_code]["state"]["upgrades"] = current_upgrades
                 await manager.broadcast_to_room(room_code, {
                     "type": "INIT_STATE", 
                     "state": rooms[room_code]["state"],
-                    "log": f"🔄 {player_id} разжёг костёр заново. Начинается новая ночь!"
+                    "log": f"🔄 {player_id} начал новую ночь. Купленные улучшения сохранены!"
                 })
+                continue
+
+            # Покупка улучшений
+            if action in ["buy_canopy", "buy_axes", "buy_scarfs"]:
+                costs = {"buy_canopy": 25, "buy_axes": 30, "buy_scarfs": 20}
+                item_keys = {"buy_canopy": "canopy", "buy_axes": "axes", "buy_scarfs": "scarfs"}
+                cost = costs[action]
+                key = item_keys[action]
+                
+                if state["wood"] >= cost and not state["upgrades"][key]:
+                    state["wood"] -= cost
+                    state["upgrades"][key] = True
+                    item_names = {"canopy": "🛠️ Навес", "axes": "🪓 Топоры", "scarfs": " scarves"}
+                    await manager.broadcast_to_room(room_code, {
+                        "type": "STATE_UPDATE", "state": state,
+                        "log": f"🛒 Лагерь приобрёл улучшение: {item_names[key]}!"
+                    })
                 continue
 
             if state["game_over"] or state["victory"]:
@@ -188,7 +212,9 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
                 
                 if random.random() > fail_chance:
                     min_w, max_w = (7, 12) if p_role == "lumberjack" else (4, 7)
-                    added_wood = random.randint(min_w, max_w)
+                    # Эффект наточенных топоров (+2 дров)
+                    bonus_axes = 2 if state["upgrades"].get("axes") else 0
+                    added_wood = random.randint(min_w, max_w) + bonus_axes
                     state["wood"] += added_wood
                     await manager.broadcast_to_room(room_code, {
                         "type": "STATE_UPDATE", "state": state,
