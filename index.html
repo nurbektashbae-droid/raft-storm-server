@@ -21,10 +21,9 @@
     </style>
 </head>
 <body>
-
     <div id="lobby-screen" class="card">
         <h1>Сквозь Метель</h1>
-        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 20px;">Создайте новый перевал или введите код существующего</p>
+        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 20px;">Создайте новый перевал или введите код</p>
         <button onclick="createRoom()" style="background: #2563eb; margin-bottom: 12px;">Создать перевал</button>
         <div style="margin: 10px 0; color: #71717a;">— ИЛИ —</div>
         <input type="text" id="room-input" placeholder="КОД ИГРЫ" maxlength="4">
@@ -34,109 +33,70 @@
 
     <div id="game-screen" class="card hidden">
         <h1 id="game-title">Перевал: ----</h1>
-        
         <div class="status-box">
-            <div>Погода за окном:</div>
+            <div>Погода:</div>
             <div id="weather">Ясно</div>
         </div>
-
         <div class="status-box">
-            <div>Запас дров в лагере:</div>
+            <div>Дрова в лагере:</div>
             <div id="wood-count" class="stat">0</div>
         </div>
-
         <button onclick="sendAction('add_wood')" style="margin-bottom: 20px; font-size: 18px; padding: 20px;">🔥 ПОД КИНУТЬ ДРОВ</button>
-        <button onclick="sendAction('change_weather')" style="background: #ef4444; font-size: 12px; padding: 8px; margin-bottom: 15px;">Вызвать буран (Тест)</button>
-
+        <button onclick="sendAction('change_weather')" style="background: #ef4444; font-size: 12px; padding: 8px; margin-bottom: 15px;">Вызвать буран</button>
         <div id="log"></div>
     </div>
 
     <script>
-        // Проверь этот адрес! Если в Render он немного другой, просто исправь эту строчку
-        const SERVER_HOST = "raft-storm-server.onrender.com"; 
+        const HOST = window.location.host;
+        const PROTOCOL = window.location.protocol === 'https:' ? 'https:' : 'http:';
+        const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         let ws;
         let myId = "Игрок_" + Math.floor(Math.random() * 1000);
 
-        function showErr(err) {
-            document.getElementById('error-text').innerText = "Лог ошибки: " + err;
-        }
+        function showErr(msg) { document.getElementById('error-text').innerText = msg; }
 
         async function createRoom() {
-            showErr("Подключение к серверу...");
             try {
-                let response = await fetch(`https://${SERVER_HOST}/create_room`);
-                if (!response.ok) throw new Error(`Ошибка сервера: ${response.status}`);
+                let response = await fetch(`${PROTOCOL}//${HOST}/create_room`);
                 let data = await response.json();
                 document.getElementById('room-input').value = data.room_code;
-                showErr("");
                 joinRoom();
-            } catch (e) {
-                showErr(`Не удалось создать комнату. Причина: ${e.message}. Попробуйте еще раз через 10 секунд.`);
-            }
+            } catch (e) { showErr("Ошибка: " + e.message); }
         }
 
         function joinRoom() {
             let code = document.getElementById('room-input').value.trim().toUpperCase();
-            if (code.length !== 4) return alert("Код должен состоять из 4 букв!");
-
+            if (code.length !== 4) return alert("4 буквы!");
             try {
-                // Используем wss:// для защищенного соединения вебсокетов
-                ws = new WebSocket(`wss://${SERVER_HOST}/ws/${code}/${myId}`);
-
+                ws = new WebSocket(`${WS_PROTOCOL}//${HOST}/ws/${code}/${myId}`);
                 ws.onopen = () => {
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('game-screen').classList.remove('hidden');
                     document.getElementById('game-title').innerText = `Перевал: ${code}`;
                 };
-
                 ws.onmessage = (event) => {
                     let data = JSON.parse(event.data);
-                    
                     if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE") {
                         document.getElementById('wood-count').innerText = data.state.wood;
                         document.getElementById('weather').innerText = data.state.weather;
-                        
-                        if (data.state.weather === "Буран") {
-                            document.getElementById('weather').style.color = "#ef4444";
-                        } else {
-                            document.getElementById('weather').style.color = "#38bdf8";
-                        }
-
+                        document.getElementById('weather').style.color = data.state.weather === "Буран" ? "#ef4444" : "#38bdf8";
                         if (data.log) addLog(data.log);
-                    } else if (data.type === "PLAYER_JOINED") {
-                        addLog(`⛺ ${data.player_id} подошел к костру.`);
-                    } else if (data.type === "PLAYER_LEFT") {
-                        addLog(`❄️ ${data.player_id} затерялся в метели.`);
-                    }
+                    } else if (data.type === "PLAYER_JOINED") { addLog(`⛺ ${data.player_id} у костра.`); }
                 };
-
-                ws.onerror = (err) => {
-                    showErr("Ошибка WebSocket соединения. Возможно, неверный URL сервера.");
-                };
-
-                ws.onclose = () => {
-                    addLog("Сессия закрыта.");
-                };
-
-            } catch(e) {
-                showErr(`Ошибка создания WebSocket: ${e.message}`);
-            }
+                ws.onerror = () => { showErr("Ошибка WebSocket"); };
+            } catch(e) { showErr(e.message); }
         }
 
-        function sendAction(actionName) {
+        function sendAction(act) {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                if (actionName === 'add_wood') {
-                    ws.send(JSON.stringify({ action: "add_wood" }));
-                } else if (actionName === 'change_weather') {
-                    ws.send(JSON.stringify({ action: "change_weather", weather: "Буран" }));
-                }
+                ws.send(JSON.stringify({ action: act }));
             }
         }
 
-        function addLog(text) {
+        function addLog(txt) {
             let logDiv = document.getElementById('log');
-            logDiv.innerHTML += `<div>[${new Date().toLocaleTimeString()}] ${text}</div>`;
+            logDiv.innerHTML += `<div>` + txt + `</div>`;
             logDiv.scrollTop = logDiv.scrollHeight;
         }
     </script>
