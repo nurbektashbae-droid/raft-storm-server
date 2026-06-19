@@ -2,8 +2,18 @@ import asyncio
 import random
 import string
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+# Разрешаем любым сайтам (включая твой GitHub Pages) делать запросы к серверу
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Хранилище активных комнат
 rooms = {}
