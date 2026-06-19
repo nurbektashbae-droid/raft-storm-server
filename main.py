@@ -24,15 +24,15 @@ def read_root():
 def get_initial_state():
     return {
         "weather": "Ясно", 
-        "wood": 20, # Немного подняли стартовый запас для покупок
+        "wood": 20, 
         "warmth": 100, 
         "time_left": 120, 
         "game_over": False, 
         "victory": False,
         "upgrades": {
-            "canopy": false,  # Навес
-            "axes": false,    # Топоры
-            "scarfs": false   # Шарфы
+            "canopy": False,  
+            "axes": False,    
+            "scarfs": False   
         }
     }
 
@@ -55,7 +55,7 @@ async def room_tick(room_code: str):
             state["victory"] = True
             await manager.broadcast_to_room(room_code, {
                 "type": "VICTORY", "state": state,
-                "log": "☀️ Рассвет! Вы пережили эту ночь! Можете закупиться улучшениями перед следующей каткой. 🎉"
+                "log": "☀️ Рассвет! Вы пережили эту суровую ночь! 🎉"
             })
             continue
 
@@ -64,29 +64,32 @@ async def room_tick(room_code: str):
             event_timer = 0
             event_type = random.choice(["blessing", "curse", "none"])
             if event_type == "blessing":
-                bonus = random.randint(5, 10)
+                bonus = random.randint(6, 12)
                 state["wood"] += bonus
                 await manager.broadcast_to_room(room_code, {
                     "type": "STATE_UPDATE", "state": state,
-                    "log": f"📦 Событие: Ветер принёс сухие ветки! (+{bonus} дров)"
+                    "log": f"📦 СОБЫТИЕ: Метель прибила к лагерю обломки ящика! (+{bonus} дров)"
                 })
             elif event_type == "curse":
-                # Если куплен навес, урон от порыва ветра меньше (10 вместо 15)
-                damage = 10 if state["upgrades"].get("canopy") else 15
+                damage = 10 if state["upgrades"].get("canopy") else 20
                 state["warmth"] = max(0, state["warmth"] - damage)
-                log_msg = "💨 Событие: Навес защитил от ветра!" if damage == 10 else "💨 Событие: Ледяной порыв ветра пронзает до костей! (-15% тепла)"
+                log_msg = "💨 СОБЫТИЕ: Ледяной шквал бьёт по тенту! Навес уберёг от части стужи. (-10% тепла)" if damage == 10 else "💨 СОБЫТИЕ: Бешеный порыв ветра пробивает лагерь! Костёр притух. (-20% тепла)"
                 await manager.broadcast_to_room(room_code, {
                     "type": "STATE_UPDATE", "state": state, "log": log_msg
                 })
 
-        # Сгорание дров
+        # Потребление костра (МАСШТАБИРОВАНИЕ от количества игроков)
+        player_count = len(room["players"])
         if state["wood"] > 0:
-            wood_burn = 2 if state["weather"] == "Буран" else 1
+            # Базовый расход: 1 дрово в сек (в ясно) или 2 (в буран)
+            base_burn = 2 if state["weather"] == "Буран" else 1
+            # Добавляем +1 расход дров за каждых двух дополнительных игроков
+            wood_burn = base_burn + (player_count // 2)
+            
             state["wood"] = max(0, state["wood"] - wood_burn)
             state["warmth"] = min(100, state["warmth"] + 1)
         else:
-            cold_speed = 5 if state["weather"] == "Буран" else 2
-            # Навес снижает скорость замерзания при отсутствии дров
+            cold_speed = 6 if state["weather"] == "Буран" else 3
             if state["upgrades"].get("canopy") and state["weather"] == "Буран":
                 cold_speed = 3
             state["warmth"] = max(0, state["warmth"] - cold_speed)
@@ -95,10 +98,10 @@ async def room_tick(room_code: str):
             state["game_over"] = True
             await manager.broadcast_to_room(room_code, {
                 "type": "GAME_OVER", "state": state,
-                "log": "💀 Лагерь полностью замерз..."
+                "log": "💀 Тьма поглотила вас... Костёр окончательно погас."
             })
 
-        await manager.broadcast_to_room(room_code, {"type": "STATE_UPDATE", "state": state})
+        await manager.broadcast_state_with_stamina(room_code)
 
 class ConnectionManager:
     async def connect(self, room_code: str, player_id: str, websocket: WebSocket):
@@ -107,11 +110,15 @@ class ConnectionManager:
             rooms[room_code] = {
                 "players": {},
                 "player_roles": {},
+                "players_stamina": {},
+                "players_status": {}, # Новый словарь для статусов
                 "state": get_initial_state(),
                 "task": None
             }
             rooms[room_code]["task"] = asyncio.create_task(room_tick(room_code))
         rooms[room_code]["players"][player_id] = websocket
+        rooms[room_code]["players_stamina"][player_id] = 100
+        rooms[room_code]["players_status"][player_id] = "⛺ В лагере"
 
     def disconnect(self, room_code: str, player_id: str):
         if room_code in rooms:
@@ -119,6 +126,10 @@ class ConnectionManager:
                 del rooms[room_code]["players"][player_id]
             if player_id in rooms[room_code]["player_roles"]:
                 del rooms[room_code]["player_roles"][player_id]
+            if player_id in rooms[room_code]["players_stamina"]:
+                del rooms[room_code]["players_stamina"][player_id]
+            if player_id in rooms[room_code]["players_status"]:
+                del rooms[room_code]["players_status"][player_id]
             if not rooms[room_code]["players"]:
                 if rooms[room_code]["task"]:
                     rooms[room_code]["task"].cancel()
@@ -127,8 +138,38 @@ class ConnectionManager:
     async def broadcast_to_room(self, room_code: str, message: dict):
         if room_code in rooms:
             for pid, ws in rooms[room_code]["players"].items():
-                try: await ws.send_json(message)
-                except: pass
+                try: 
+                    await ws.send_json(message)
+                except: 
+                    pass
+
+    async def broadcast_state_with_stamina(self, room_code: str, custom_log: str = None):
+        if room_code in rooms:
+            room = rooms[room_code]
+            
+            # Собираем список игроков для отображения на фронтенде
+            role_emojis = {"lumberjack": "🪓", "keeper": "🔥", "scout": "🧭"}
+            players_list = []
+            for pid in room["players"]:
+                r = room["player_roles"].get(pid, "survivor")
+                status = room["players_status"].get(pid, "⛺ В лагере")
+                stamina = room["players_stamina"].get(pid, 100)
+                emoji = role_emojis.get(r, "👤")
+                players_list.append(f"{emoji} {pid}: Энергия {stamina}% | {status}")
+
+            for pid, ws in room["players"].items():
+                msg = {
+                    "type": "STATE_UPDATE",
+                    "state": room["state"],
+                    "player_stamina": room["players_stamina"].get(pid, 100),
+                    "players_list": players_list # Шлем список всем
+                }
+                if custom_log:
+                    msg["log"] = custom_log
+                try:
+                    await ws.send_json(msg)
+                except:
+                    pass
 
 manager = ConnectionManager()
 
@@ -145,9 +186,13 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
     await manager.connect(room_code, player_id, websocket)
     rooms[room_code]["player_roles"][player_id] = role
     
-    await websocket.send_json({"type": "INIT_STATE", "state": rooms[room_code]["state"]})
+    await websocket.send_json({
+        "type": "INIT_STATE", 
+        "state": rooms[room_code]["state"],
+        "player_stamina": 100
+    })
     
-    role_emojis = {"lumberjack": "🪓 Дровосек", "keeper": "🔥 Хранитель", "scout": "🧭 Проводник"}
+    role_emojis = {"lumberjack": "🪓 Дровосек", "keeper": "🔥 Хранитель костра", "scout": "🧭 Проводник"}
     role_name = role_emojis.get(role, "Выживший")
     await manager.broadcast_to_room(room_code, {
         "type": "PLAYER_JOINED", "player_id": f"{player_id} ({role_name})"
@@ -159,22 +204,26 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
             if room_code not in rooms:
                 continue
                 
-            state = rooms[room_code]["state"]
+            room = rooms[room_code]
+            state = room["state"]
             action = data.get("action")
             
             if action == "restart_game":
-                # При перезапуске сохраняем апгрейды лагеря!
                 current_upgrades = state["upgrades"]
-                rooms[room_code]["state"] = get_initial_state()
-                rooms[room_code]["state"]["upgrades"] = current_upgrades
+                room["state"] = get_initial_state()
+                room["state"]["upgrades"] = current_upgrades
+                for pid in room["players_stamina"]:
+                    room["players_stamina"][pid] = 100
+                    room["players_status"][pid] = "⛺ В лагере"
+                    
                 await manager.broadcast_to_room(room_code, {
                     "type": "INIT_STATE", 
-                    "state": rooms[room_code]["state"],
-                    "log": f"🔄 {player_id} начал новую ночь. Купленные улучшения сохранены!"
+                    "state": room["state"],
+                    "player_stamina": 100,
+                    "log": f"🔄 {player_id} разжёг новый костёр! Улучшения лагеря сохранены."
                 })
                 continue
 
-            # Покупка улучшений
             if action in ["buy_canopy", "buy_axes", "buy_scarfs"]:
                 costs = {"buy_canopy": 25, "buy_axes": 30, "buy_scarfs": 20}
                 item_keys = {"buy_canopy": "canopy", "buy_axes": "axes", "buy_scarfs": "scarfs"}
@@ -184,55 +233,83 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
                 if state["wood"] >= cost and not state["upgrades"][key]:
                     state["wood"] -= cost
                     state["upgrades"][key] = True
-                    item_names = {"canopy": "🛠️ Навес", "axes": "🪓 Топоры", "scarfs": " scarves"}
-                    await manager.broadcast_to_room(room_code, {
-                        "type": "STATE_UPDATE", "state": state,
-                        "log": f"🛒 Лагерь приобрёл улучшение: {item_names[key]}!"
-                    })
+                    item_names = {"canopy": "⛺ Прочный Навес", "axes": "🪓 Острые Топоры", "scarfs": "🧣 Теплые Шарфы"}
+                    await manager.broadcast_state_with_stamina(room_code, f"🛠️ {player_id} улучшил лагерь: {item_names[key]}!")
                 continue
 
             if state["game_over"] or state["victory"]:
                 continue
                 
-            p_role = rooms[room_code]["player_roles"].get(player_id, "survivor")
+            p_role = room["player_roles"].get(player_id, "survivor")
+            cost_modifier = 5 if state["upgrades"].get("scarfs") else 0
             
             if action == "burn_one_wood":
-                if state["wood"] >= 1:
-                    boost = 8 if p_role == "keeper" else 5
-                    state["warmth"] = min(100, state["warmth"] + boost)
-                    state["wood"] -= 1
-                    await manager.broadcast_to_room(room_code, {
-                        "type": "STATE_UPDATE", "state": state,
-                        "log": f"🔥 {player_id} бросил дрово в костёр (+{boost}% тепла)."
-                    })
+                cost = max(5, 15 - cost_modifier)
+                if room["players_stamina"].get(player_id, 100) >= cost:
+                    if state["wood"] >= 1:
+                        room["players_stamina"][player_id] -= cost
+                        boost = 10 if p_role == "keeper" else 6
+                        state["warmth"] = min(100, state["warmth"] + boost)
+                        state["wood"] -= 1
+                        await manager.broadcast_state_with_stamina(room_code, f"🔥 {player_id} подбросил дрова в огонь (+{boost}% тепла).")
 
             elif action == "go_to_forest":
-                is_blizzard = (state["weather"] == "Буран")
-                fail_chance = 0.40 if p_role in ["lumberjack", "scout"] else 0.70 if is_blizzard else 0.25
+                cost = max(15, 35 - cost_modifier)
+                if room["players_stamina"].get(player_id, 100) >= cost:
+                    room["players_stamina"][player_id] -= cost
+                    room["players_status"][player_id] = "🌲 В лесу" # Меняем статус
+                    
+                    # Чтобы дать фронтенду время на анимацию, сервер рассчитывает исход сразу,
+                    # но статус игрока обновится обратно в лагерь через 3 секунды
+                    async def delayed_forest_result(pid, role_p):
+                        await asyncio.sleep(3)
+                        if room_code in rooms and pid in rooms[room_code]["players"]:
+                            r_room = rooms[room_code]
+                            r_state = r_room["state"]
+                            is_blizzard = (r_state["weather"] == "Буран")
+                            
+                            if role_p == "scout":
+                                fail_chance = 0.35 if is_blizzard else 0.15
+                            elif role_p == "lumberjack":
+                                fail_chance = 0.45 if is_blizzard else 0.20
+                            else:
+                                fail_chance = 0.70 if is_blizzard else 0.30
+                            
+                            if random.random() > fail_chance:
+                                min_w, max_w = (8, 14) if role_p == "lumberjack" else (4, 8)
+                                bonus_axes = 3 if r_state["upgrades"].get("axes") else 0
+                                added_wood = random.randint(min_w, max_w) + bonus_axes
+                                r_state["wood"] += added_wood
+                                r_room["players_status"][pid] = "⛺ В лагере"
+                                await manager.broadcast_state_with_stamina(room_code, f"🌲 {pid} успешно вернулся и принёс {added_wood} дров.")
+                            else:
+                                damage = 18 if is_blizzard else 10
+                                r_state["warmth"] = max(0, r_state["warmth"] - damage)
+                                r_room["players_status"][pid] = "⛺ В лагере"
+                                await manager.broadcast_state_with_stamina(room_code, f"🥶 {pid} заблудился в лесу! Теряет тепло лагеря (-{damage}%).")
+
+                    asyncio.create_task(delayed_forest_result(player_id, p_role))
+                    await manager.broadcast_state_with_stamina(room_code)
+
+            elif action == "rest_at_camp":
+                room["players_status"][player_id] = "💤 Отдыхает"
                 
-                if random.random() > fail_chance:
-                    min_w, max_w = (7, 12) if p_role == "lumberjack" else (4, 7)
-                    # Эффект наточенных топоров (+2 дров)
-                    bonus_axes = 2 if state["upgrades"].get("axes") else 0
-                    added_wood = random.randint(min_w, max_w) + bonus_axes
-                    state["wood"] += added_wood
-                    await manager.broadcast_to_room(room_code, {
-                        "type": "STATE_UPDATE", "state": state,
-                        "log": f"🌲 {player_id} принёс {added_wood} дров из леса."
-                    })
-                else:
-                    damage = 20 if is_blizzard else 10
-                    state["warmth"] = max(0, state["warmth"] - damage)
-                    await manager.broadcast_to_room(room_code, {
-                        "type": "STATE_UPDATE", "state": state,
-                        "log": f"🥶 {player_id} заблудился! Лагерь потерял {damage}% тепла."
-                    })
+                async def delayed_rest(pid):
+                    await asyncio.sleep(4)
+                    if room_code in rooms and pid in rooms[room_code]["players"]:
+                        r_room = rooms[room_code]
+                        current_stamina = r_room["players_stamina"].get(pid, 100)
+                        r_room["players_stamina"][pid] = min(100, current_stamina + 50)
+                        r_room["players_status"][pid] = "⛺ В лагере"
+                        await manager.broadcast_state_with_stamina(room_code, f"💤 {pid} восстановил силы у огня (+50 Энергии).")
+                        
+                asyncio.create_task(delayed_rest(player_id))
+                await manager.broadcast_state_with_stamina(room_code)
 
             elif action == "change_weather":
                 state["weather"] = "Буран" if state["weather"] == "Ясно" else "Ясно"
-                status_text = "⚠️ Налетает ледяной Буран!" if state["weather"] == "Буран" else "☀️ Буря утихла."
-                await manager.broadcast_to_room(room_code, {
-                    "type": "STATE_UPDATE", "state": state, "log": status_text
-                })
+                status_text = "⚠️ ВНИМАНИЕ: Начинается лютый Буран!" if state["weather"] == "Буран" else "☀️ Буря утихла. Небо прояснилось."
+                await manager.broadcast_state_with_stamina(room_code, status_text)
+                
     except WebSocketDisconnect:
         manager.disconnect(room_code, player_id)
