@@ -6,47 +6,116 @@
     <title>Перевал: Сквозь Метель</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #121213; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
-        .card { background: #1e1e24; border: 2px solid #3f3f46; border-radius: 12px; padding: 24px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
-        h1 { font-size: 20px; margin-bottom: 20px; color: #f1f5f9; text-transform: uppercase; letter-spacing: 2px; }
-        input, select { width: 100%; padding: 12px; background: #27272a; border: 1px solid #4b5563; border-radius: 6px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 12px; }
+        body { 
+            background: #0f172a; 
+            color: #e2e8f0; 
+            font-family: 'Courier New', Courier, monospace; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            justify-content: center; 
+            min-height: 100vh; 
+            padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        /* Контейнер для эффекта метели */
+        #snow-container {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            color: #fff;
+            font-size: 1em;
+            user-select: none;
+            z-index: 1;
+            opacity: 0.8;
+            animation: snowfall linear infinite;
+        }
+
+        @keyframes snowfall {
+            0% { transform: translateY(0) translateX(0) rotate(0deg); }
+            100% { transform: translateY(105vh) translateX(100px) rotate(360deg); }
+        }
+
+        /* Основная карточка */
+        .card { 
+            background: #1e293b; 
+            border: 2px solid #475569; 
+            border-radius: 16px; 
+            padding: 28px; 
+            width: 100%; 
+            max-width: 420px; 
+            text-align: center; 
+            box-shadow: 0 20px 25px -5px rgba(0,0,0,0.7); 
+            position: relative;
+            z-index: 10;
+            transition: border-color 0.5s ease;
+        }
+
+        /* Эффект дрожания карточки при буране */
+        .blizzard-active {
+            border-color: #ef4444 !important;
+            animation: wind-shake 0.3s infinite alternate;
+        }
+
+        @keyframes wind-shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            100% { transform: translate(-1px, -1px) rotate(0.5deg); }
+        }
+
+        h1 { font-size: 22px; margin-bottom: 20px; color: #f8fafc; text-transform: uppercase; letter-spacing: 2px; text-shadow: 0 2px 4px rgba(0,0,0,0.5); }
+        input, select { width: 100%; padding: 14px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 14px; outline: none; transition: 0.2s; }
+        input:focus, select:focus { border-color: #38bdf8; }
         select { text-align-last: center; }
-        button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
-        button:hover { background: #c2410c; }
-        button:disabled { background: #4b5563 !important; cursor: not-allowed; }
+        button { width: 100%; padding: 14px; background: #f97316; border: none; border-radius: 8px; color: white; font-weight: bold; font-size: 15px; cursor: pointer; text-transform: uppercase; transition: 0.2s; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.3); }
+        button:hover { background: #ea580c; }
+        button:disabled { background: #475569 !important; color: #94a3b8 !important; cursor: not-allowed; box-shadow: none; }
         .hidden { display: none; }
-        .status-box { background: #27272a; border: 1px dashed #4b5563; padding: 10px; margin: 8px 0; border-radius: 6px; }
-        #weather { font-size: 22px; color: #38bdf8; font-weight: bold; }
-        #timer-text { font-size: 22px; color: #a3e635; font-weight: bold; }
-        .bar { width: 100%; background: #27272a; height: 16px; border-radius: 10px; border: 1px solid #4b5563; overflow: hidden; margin-top: 5px; }
+        .status-box { background: #334155; border: 1px dashed #64748b; padding: 12px; margin: 10px 0; border-radius: 8px; text-align: left; }
+        .flex-box { display: flex; justify-content: space-between; align-items: center; }
+        #weather { font-size: 20px; color: #38bdf8; font-weight: bold; }
+        #timer-text { font-size: 20px; color: #4ade80; font-weight: bold; }
+        .bar { width: 100%; background: #0f172a; height: 18px; border-radius: 10px; border: 1px solid #475569; overflow: hidden; margin-top: 6px; }
         .fill-warmth { height: 100%; width: 100%; background: #ef4444; transition: width 0.3s ease; }
         .fill-stamina { height: 100%; width: 100%; background: #eab308; transition: width 0.3s ease; }
-        #log { background: #09090b; padding: 10px; height: 110px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 4px; border: 1px solid #27272a; color: #a1a1aa; margin-top: 10px; }
-        #error-text { color: #ef4444; font-size: 12px; margin-top: 10px; text-align: left; }
+        #log { background: #020617; padding: 12px; height: 130px; overflow-y: auto; text-align: left; font-size: 12px; border-radius: 6px; border: 1px solid #334155; color: #cbd5e1; margin-top: 12px; line-height: 1.4; }
+        #error-text { color: #f87171; font-size: 13px; margin-top: 10px; text-align: center; font-weight: bold; }
         .btn-forest { background: #16a34a; margin-bottom: 10px; }
         .btn-forest:hover { background: #15803d; }
         .btn-rest { background: #2563eb; margin-bottom: 10px; }
         .btn-rest:hover { background: #1d4ed8; }
-        .shop-btn { background: #52525b; padding: 6px; font-size: 11px; margin: 3px 0; width: 100%; text-align: left; }
-        .shop-btn:hover { background: #71717a; }
+        .shop-btn { background: #475569; padding: 8px; font-size: 12px; margin: 4px 0; width: 100%; text-align: left; border-radius: 4px; border: 1px solid #64748b; }
+        .shop-btn:hover { background: #64748b; }
+        .player-list-item { font-size: 12px; border-bottom: 1px solid #475569; padding: 4px 0; }
+        .player-list-item:last-child { border: none; }
     </style>
 </head>
 <body>
+    <div id="snow-container"></div>
+
     <div id="lobby-screen" class="card">
         <h1>Сквозь Метель</h1>
-        <p style="font-size: 14px; color: #a1a1aa; margin-bottom: 15px;">Выберите роль и создайте лагерь</p>
+        <p style="font-size: 14px; color: #94a3b8; margin-bottom: 20px;">Выживите в лагере посреди ледяной бури</p>
         
         <input type="text" id="nickname-input" placeholder="ВАШ НИКНЕЙМ" maxlength="12">
         
         <select id="role-input">
-            <option value="lumberjack">🪓 Дровосек (+Дрова, Риск меньше)</option>
-            <option value="keeper">🔥 Хранитель костра (+Эффект тепла)</option>
-            <option value="scout">🧭 Проводник (Меньше теряется в буран)</option>
+            <option value="lumberjack">🪓 Дровосек (+Добыча, Риск меньше)</option>
+            <option value="keeper">🔥 Хранитель костра (++Тепло от дров)</option>
+            <option value="scout">🧭 Проводник (Минимум риска в буран)</option>
         </select>
         
-        <hr style="border: 1px solid #27272a; margin-bottom: 15px;">
+        <hr style="border: 1px solid #334155; margin-bottom: 20px;">
         <button onclick="createRoom()" style="background: #2563eb; margin-bottom: 12px;">Создать перевал</button>
-        <div style="margin: 10px 0; color: #71717a;">— ИЛИ —</div>
+        <div style="margin: 10px 0; color: #64748b; font-weight: bold;">— ИЛИ —</div>
         <input type="text" id="room-input" placeholder="КОД ИГРЫ (4 БУКВЫ)" maxlength="4" style="text-transform: uppercase;">
         <button onclick="joinRoom()">Войти в бурю</button>
         <div id="error-text"></div>
@@ -55,43 +124,50 @@
     <div id="game-screen" class="card hidden">
         <h1 id="game-title">Перевал: ----</h1>
         
-        <div class="status-box" style="display: flex; justify-content: space-between; align-items: center;">
+        <div class="status-box flex-box">
             <span>До рассвета:</span>
             <span id="timer-text">02:00</span>
         </div>
 
-        <div class="status-box">
-            <div>Погода: <span id="weather">Ясно</span></div>
+        <div class="status-box" style="border-color: #38bdf8;">
+            <div style="font-size: 12px; margin-bottom: 6px; font-weight: bold; color: #38bdf8; text-transform: uppercase;">👥 Выжившие на перевале:</div>
+            <div id="players-box"></div>
+        </div>
+
+        <div class="status-box flex-box">
+            <span>Окружение:</span>
+            <span id="weather">Ясно</span>
         </div>
 
         <div class="status-box">
-            <div>Тепло в лагере: <span id="warmth-text">100%</span></div>
+            <div class="flex-box"><span>Тепло костра:</span> <span id="warmth-text" style="color:#ef4444; font-weight:bold;">100%</span></div>
             <div class="bar"><div id="warmth-fill" class="fill-warmth"></div></div>
         </div>
 
         <div class="status-box" style="border-color: #eab308;">
-            <div>Ваша Выносливость: <span id="stamina-text">100%</span></div>
+            <div class="flex-box"><span>Ваша выносливость:</span> <span id="stamina-text" style="color:#eab308; font-weight:bold;">100%</span></div>
             <div class="bar"><div id="stamina-fill" class="fill-stamina"></div></div>
         </div>
 
-        <div class="status-box">
-            <div>Дрова на складе: <span id="wood-count" style="font-weight: bold; color: #f97316;">0</span></div>
+        <div class="status-box flex-box">
+            <span>Дров на складе лагеря:</span>
+            <span id="wood-count" style="font-size: 20px; font-weight: bold; color: #f97316;">0</span>
         </div>
 
-        <div class="status-box" style="text-align: left; border-color: #a3e635;">
-            <div style="font-size: 12px; margin-bottom: 5px; font-weight: bold; color: #a3e635;">🛠️ УЛУЧШЕНИЯ ЛАГЕРЯ:</div>
+        <div class="status-box" style="border-color: #4ade80;">
+            <div style="font-size: 12px; margin-bottom: 6px; font-weight: bold; color: #4ade80; text-transform: uppercase;">🛠️ Улучшения лагеря (Общие):</div>
             <button id="up-canopy" class="shop-btn" onclick="sendAction('buy_canopy')">⛺ Укрепить Навес (25 дров)</button>
             <button id="up-axes" class="shop-btn" onclick="sendAction('buy_axes')">🪓 Наточить Топоры (30 дров)</button>
             <button id="up-scarfs" class="shop-btn" onclick="sendAction('buy_scarfs')">🧣 Теплые Шарфы (20 дров)</button>
         </div>
 
-        <button id="burn-btn" onclick="burnWood()" style="margin-bottom: 10px; font-size: 15px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР (-15 Энергии)</button>
-        <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС (-35 Энергии)</button>
+        <button id="burn-btn" onclick="burnWood()" style="margin-bottom: 10px;">🔥 БРОСИТЬ ДРОВО В КОСТЁР</button>
+        <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС</button>
         <button id="rest-btn" class="btn-rest" onclick="restAtCamp()">💤 ОТДОХНУТЬ У КОСТРА</button>
         
-        <div style="display: flex; gap: 5px;">
-            <button id="weather-btn" onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px; width: 50%;">Переключить Буран</button>
-            <button id="restart-btn" class="hidden" onclick="sendAction('restart_game')" style="background: #2563eb; width: 50%; padding: 6px; font-size: 11px;">🔄 СЛЕДУЮЩАЯ НОЧЬ</button>
+        <div style="display: flex; gap: 8px;">
+            <button id="weather-btn" onclick="sendAction('change_weather')" style="background: #475569; font-size: 11px; padding: 8px; width: 50%;">Призвать Буран</button>
+            <button id="restart-btn" class="hidden" onclick="sendAction('restart_game')" style="background: #2563eb; width: 50%; padding: 8px; font-size: 11px;">🔄 СЛЕДУЮЩАЯ НОЧЬ</button>
         </div>
         
         <div id="log"></div>
@@ -109,6 +185,7 @@
         let globalWood = 0;
         let costModifier = 0;
         let gameIsEnded = false;
+        let snowInterval = null;
 
         function showErr(msg) { 
             const errEl = document.getElementById('error-text');
@@ -126,14 +203,43 @@
             return nick ? nick : "Странник_" + Math.floor(Math.random() * 100);
         }
 
+        // Функция включения/выключения снежной бури на экране
+        function toggleSnow(isBlizzard) {
+            const container = document.getElementById('snow-container');
+            const gameScreen = document.getElementById('game-screen');
+            
+            if (isBlizzard) {
+                gameScreen.classList.add('blizzard-active');
+                if (container.children.length === 0) {
+                    for (let i = 0; i < 50; i++) {
+                        let flake = document.createElement('div');
+                        flake.className = 'snowflake';
+                        flake.innerText = ['❄', '❅', '❆', '•'][Math.floor(Math.random() * 4)];
+                        flake.style.left = Math.random() * 100 + 'vw';
+                        flake.style.animationDuration = (Math.random() * 1.5 + 1) + 's'; // Быстрое падение
+                        flake.style.animationDelay = Math.random() * 2 + 's';
+                        flake.style.fontSize = (Math.random() * 14 + 10) + 'px';
+                        container.appendChild(flake);
+                    }
+                }
+            } else {
+                gameScreen.classList.remove('blizzard-active');
+                container.innerHTML = "";
+            }
+        }
+
         function updateStaminaUI() {
             document.getElementById('stamina-text').innerText = myStamina + "%";
             document.getElementById('stamina-fill').style.width = myStamina + "%";
             
+            let burnCost = Math.max(5, 15 - costModifier);
+            let forestCost = Math.max(15, 35 - costModifier);
+
+            document.getElementById('burn-btn').innerText = `🔥 БРОСИТЬ ДРОВО В КОСТЁР (-${burnCost} Энергии)`;
+            document.getElementById('forest-btn').innerText = isActionLocked ? "⏳ В ЛЕСУ (3с)..." : `🌲 СХОДИТЬ В ЛЕС (-${forestCost} Энергии)`;
+            document.getElementById('rest-btn').innerText = isActionLocked ? "⏳ ОТДЫХАЕМ (4с)..." : "💤 ОТДОХНУТЬ У КОСТРА";
+
             if (!isActionLocked && !gameIsEnded) {
-                let burnCost = 15 - costModifier;
-                let forestCost = 35 - costModifier;
-                
                 document.getElementById('burn-btn').disabled = (myStamina < burnCost);
                 document.getElementById('forest-btn').disabled = (myStamina < forestCost);
                 document.getElementById('rest-btn').disabled = false;
@@ -147,17 +253,12 @@
                 let data = await response.json();
                 document.getElementById('room-input').value = data.room_code;
                 joinRoom();
-            } catch (e) { 
-                showErr("Ошибка создания комнаты: " + e.message); 
-            }
+            } catch (e) { showErr("Ошибка создания комнаты: " + e.message); }
         }
 
         function joinRoom() {
             let code = document.getElementById('room-input').value.trim().toUpperCase();
-            if (code.length !== 4) {
-                showErr("Введите 4 буквы!");
-                return;
-            }
+            if (code.length !== 4) return showErr("Введите 4 буквы!");
             
             myId = getNickname();
             let selectedRole = document.getElementById('role-input').value;
@@ -175,55 +276,57 @@
                 
                 ws.onmessage = (event) => {
                     let data;
-                    try {
-                        data = JSON.parse(event.data);
-                    } catch(e) {
-                        return;
-                    }
+                    try { data = JSON.parse(event.data); } catch(e) { return; }
                     
                     if (data.type === "INIT_STATE" || data.type === "STATE_UPDATE" || data.type === "GAME_OVER" || data.type === "VICTORY") {
-                        if (data.state && typeof data.state.player_stamina !== 'undefined') {
-                            myStamina = Math.max(0, Math.min(100, data.state.player_stamina));
+                        if (typeof data.player_stamina !== 'undefined') {
+                            myStamina = data.player_stamina;
                         }
                         
+                        if (data.players_list) {
+                            let pBox = document.getElementById('players-box');
+                            pBox.innerHTML = "";
+                            data.players_list.forEach(pStr => {
+                                pBox.innerHTML += `<div class="player-list-item">${pStr}</div>`;
+                            });
+                        }
+
                         globalWood = data.state.wood || 0;
                         document.getElementById('wood-count').innerText = globalWood;
                         
-                        document.getElementById('weather').innerText = data.state.weather || "Ясно";
-                        document.getElementById('weather').style.color = (data.state.weather === "Буран") ? "#ef4444" : "#38bdf8";
-                        
+                        // Погода и запуск снега
+                        let currentBoxWeather = data.state.weather || "Ясно";
+                        document.getElementById('weather').innerText = currentBoxWeather;
+                        document.getElementById('weather').style.color = (currentBoxWeather === "Буран") ? "#ef4444" : "#38bdf8";
+                        toggleSnow(currentBoxWeather === "Буран");
+
                         document.getElementById('timer-text').innerText = formatTime(data.state.time_left || 120);
                         document.getElementById('warmth-text').innerText = (data.state.warmth || 100) + "%";
                         document.getElementById('warmth-fill').style.width = (data.state.warmth || 100) + "%";
                         
-                        // Эффект шарфов
                         if (data.state.upgrades && data.state.upgrades.scarfs) {
                             costModifier = 5;
-                            const scarfBtn = document.getElementById('up-scarfs');
-                            scarfBtn.innerText = "🧣 Шарфы [КУПЛЕНО]";
-                            scarfBtn.disabled = true;
+                            document.getElementById('up-scarfs').innerText = "🧣 Шарфы [КУПЛЕНО]";
+                            document.getElementById('up-scarfs').disabled = true;
                         } else {
                             costModifier = 0;
-                            const scarfBtn = document.getElementById('up-scarfs');
-                            scarfBtn.innerText = "🧣 Теплые Шарфы (20 дров)";
-                            scarfBtn.disabled = (globalWood < 20);
+                            document.getElementById('up-scarfs').innerText = "🧣 Теплые Шарфы (20 дров)";
+                            document.getElementById('up-scarfs').disabled = (globalWood < 20);
                         }
 
-                        // Навес
                         if (data.state.upgrades && data.state.upgrades.canopy) {
-                            const canopyBtn = document.getElementById('up-canopy');
-                            canopyBtn.innerText = "⛺ Навес [КУПЛЕНО]";
-                            canopyBtn.disabled = true;
+                            document.getElementById('up-canopy').innerText = "⛺ Навес [КУПЛЕНО]";
+                            document.getElementById('up-canopy').disabled = true;
                         } else {
+                            document.getElementById('up-canopy').innerText = "⛺ Укрепить Навес (25 дров)";
                             document.getElementById('up-canopy').disabled = (globalWood < 25);
                         }
 
-                        // Топоры
                         if (data.state.upgrades && data.state.upgrades.axes) {
-                            const axesBtn = document.getElementById('up-axes');
-                            axesBtn.innerText = "🪓 Топоры [КУПЛЕНО]";
-                            axesBtn.disabled = true;
+                            document.getElementById('up-axes').innerText = "🪓 Топоры [КУПЛЕНО]";
+                            document.getElementById('up-axes').disabled = true;
                         } else {
+                            document.getElementById('up-axes').innerText = "🪓 Наточить Топоры (30 дров)";
                             document.getElementById('up-axes').disabled = (globalWood < 30);
                         }
 
@@ -231,29 +334,27 @@
 
                         if (data.state.game_over) {
                             endGame("💀 ЗАМЕРЗЛИ", "#ef4444");
+                            toggleSnow(false); // Выключаем снег в конце
                         } else if (data.state.victory) {
-                            endGame("☀️ РАССВЕТ!", "#a3e635");
+                            endGame("☀️ РАССВЕТ!", "#22c55e");
+                            toggleSnow(false);
                             document.getElementById('restart-btn').classList.remove('hidden');
                         } else {
                             if (data.type === "INIT_STATE") {
                                 gameIsEnded = false;
-                                const burnBtn = document.getElementById('burn-btn');
-                                burnBtn.style.background = "#ea580c";
-                                burnBtn.innerText = `🔥 БРОСИТЬ ДРОВО В КОСТЁР (-${15 - costModifier} Энергии)`;
+                                document.getElementById('burn-btn').style.background = "#f97316";
                             }
                             document.getElementById('restart-btn').classList.add('hidden');
                         }
                         updateStaminaUI();
                     } else if (data.type === "PLAYER_JOINED") { 
-                        addLog(`⛺ ${data.player_id} у костра.`); 
+                        addLog(`⛺ ${data.player_id} пришёл к костру.`); 
                     }
                 };
                 
                 ws.onerror = () => { showErr("Ошибка подключения WebSocket"); };
-                ws.onclose = () => { showErr("Соединение закрыто"); };
-            } catch(e) { 
-                showErr("Ошибка: " + e.message); 
-            }
+                ws.onclose = () => { showErr("Соединение закрыто"); toggleSnow(false); };
+            } catch(e) { showErr("Ошибка: " + e.message); }
         }
 
         function setButtonsDisabled(status) {
@@ -264,31 +365,59 @@
 
         function burnWood() {
             if (isActionLocked || gameIsEnded) return;
-            let cost = 15 - costModifier;
+            let cost = Math.max(5, 15 - costModifier);
             if (myStamina < cost) return;
-            myStamina -= cost;
-            updateStaminaUI();
             sendAction('burn_one_wood');
         }
 
         function goToForest() {
             if (isActionLocked || gameIsEnded) return;
-            let cost = 35 - costModifier;
+            let cost = Math.max(15, 35 - costModifier);
             if (myStamina < cost) return;
-            myStamina -= cost;
             
             isActionLocked = true;
             setButtonsDisabled(true);
-            
-            document.getElementById('forest-btn').innerText = "⏳ В ЛЕСУ (3с)...";
+            updateStaminaUI();
             sendAction('go_to_forest');
             
             setTimeout(() => {
                 isActionLocked = false;
-                document.getElementById('forest-btn').innerText = `🌲 СХОДИТЬ В ЛЕС (-${35 - costModifier} Энергии)`;
                 updateStaminaUI();
             }, 3000);
         }
 
         function restAtCamp() {
-            if (isActionLocked ||
+            if (isActionLocked || gameIsEnded) return;
+            isActionLocked = true;
+            setButtonsDisabled(true);
+            updateStaminaUI();
+            sendAction('rest_at_camp');
+            
+            setTimeout(() => {
+                isActionLocked = false;
+                updateStaminaUI();
+            }, 4000);
+        }
+
+        function endGame(msg, color) {
+            gameIsEnded = true;
+            setButtonsDisabled(true);
+            const burnBtn = document.getElementById('burn-btn');
+            burnBtn.innerText = msg;
+            burnBtn.style.background = color;
+        }
+
+        function sendAction(act) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ action: act }));
+            }
+        }
+
+        function addLog(txt) {
+            let logDiv = document.getElementById('log');
+            logDiv.innerHTML += `<div>` + txt + `</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+    </script>
+</body>
+</html>
