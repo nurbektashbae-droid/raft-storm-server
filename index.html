@@ -90,8 +90,10 @@
         <button id="forest-btn" class="btn-forest" onclick="goToForest()">🌲 СХОДИТЬ В ЛЕС (-35 Энергии)</button>
         <button id="rest-btn" class="btn-rest" onclick="restAtCamp()">💤 ОТДОХНУТЬ У КОСТРА</button>
         
-        <button id="weather-btn" onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 4px; width: auto; margin-right: 5px;">Буран</button>
-        <button id="restart-btn" class="hidden" onclick="sendAction('restart_game')" style="background: #2563eb; display: inline-block; width: auto; padding: 10px;">🔄 СЛЕДУЮЩАЯ НОЧЬ</button>
+        <div style="display: flex; gap: 5px;">
+            <button id="weather-btn" onclick="sendAction('change_weather')" style="background: #3f3f46; font-size: 11px; padding: 6px; width: 50%;">Переключить Буран</button>
+            <button id="restart-btn" class="hidden" onclick="sendAction('restart_game')" style="background: #2563eb; width: 50%; padding: 6px; font-size: 11px;">🔄 СЛЕДУЮЩАЯ НОЧЬ</button>
+        </div>
         
         <div id="log"></div>
     </div>
@@ -99,7 +101,7 @@
     <script>
         const HOST = window.location.host;
         const PROTOCOL = window.location.protocol === 'https:' ? 'https:' : 'http:';
-        const WS_PROTOCOL = 'wss:';
+        const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         
         let ws;
         let myId = "";
@@ -107,6 +109,7 @@
         let isActionLocked = false;
         let globalWood = 0;
         let costModifier = 0;
+        let gameIsEnded = false;
 
         function showErr(msg) { document.getElementById('error-text').innerText = msg; }
         function formatTime(secs) {
@@ -121,11 +124,13 @@
             document.getElementById('stamina-text').innerText = myStamina + "%";
             document.getElementById('stamina-fill').style.width = myStamina + "%";
             
-            if (!isActionLocked) {
-                let burnCost = costModifier;
+            if (!isActionLocked && !gameIsEnded) {
+                let burnCost = 15 - costModifier;
                 let forestCost = 35 - costModifier;
+                
                 document.getElementById('burn-btn').disabled = (myStamina < burnCost);
                 document.getElementById('forest-btn').disabled = (myStamina < forestCost);
+                document.getElementById('rest-btn').disabled = false;
             }
         }
 
@@ -151,6 +156,7 @@
                     document.getElementById('lobby-screen').classList.add('hidden');
                     document.getElementById('game-screen').classList.remove('hidden');
                     document.getElementById('game-title').innerText = `Перевал: ${code}`;
+                    gameIsEnded = false;
                     updateStaminaUI();
                 };
                 ws.onmessage = (event) => {
@@ -171,25 +177,41 @@
                             costModifier = 5;
                             document.getElementById('up-scarfs').innerText = "🧣 Шарфы [КУПЛЕНО]";
                             document.getElementById('up-scarfs').disabled = true;
+                        } else {
+                            costModifier = 0;
+                            document.getElementById('up-scarfs').innerText = "🧣 Теплые Шарфы (20 дров)";
+                            document.getElementById('up-scarfs').disabled = (globalWood < 20);
                         }
+
                         if (data.state.upgrades.canopy) {
                             document.getElementById('up-canopy').innerText = "⛺ Навес [КУПЛЕНО]";
                             document.getElementById('up-canopy').disabled = true;
+                        } else {
+                            document.getElementById('up-canopy').disabled = (globalWood < 25);
                         }
+
                         if (data.state.upgrades.axes) {
                             document.getElementById('up-axes').innerText = "🪓 Топоры [КУПЛЕНО]";
                             document.getElementById('up-axes').disabled = true;
+                        } else {
+                            document.getElementById('up-axes').disabled = (globalWood < 30);
                         }
 
                         if (data.log) addLog(data.log);
 
-                        if (data.state.game_over) endGame("💀 ЗАМЕРЗЛИ", "#ef4444");
-                        else if (data.state.victory) {
+                        if (data.state.game_over) {
+                            endGame("💀 ЗАМЕРЗЛИ", "#ef4444");
+                        } else if (data.state.victory) {
                             endGame("☀️ РАССВЕТ!", "#a3e635");
                             document.getElementById('restart-btn').classList.remove('hidden');
                         } else {
+                            if (data.type === "INIT_STATE") {
+                                // Если перезапустили игру
+                                gameIsEnded = false;
+                                document.getElementById('burn-btn').style.background = "#ea580c";
+                                document.getElementById('burn-btn').innerText = `🔥 БРОСИТЬ ДРОВО В КОСТЁР (-${15 - costModifier} Энергии)`;
+                            }
                             document.getElementById('restart-btn').classList.add('hidden');
-                            if (!isActionLocked) setButtonsDisabled(false);
                         }
                         updateStaminaUI();
                     } else if (data.type === "PLAYER_JOINED") { 
@@ -207,6 +229,7 @@
         }
 
         function burnWood() {
+            if (isActionLocked || gameIsEnded) return;
             let cost = 15 - costModifier;
             if (myStamina < cost) return;
             myStamina -= cost;
@@ -215,9 +238,11 @@
         }
 
         function goToForest() {
+            if (isActionLocked || gameIsEnded) return;
             let cost = 35 - costModifier;
             if (myStamina < cost) return;
             myStamina -= cost;
+            
             isActionLocked = true;
             setButtonsDisabled(true);
             
@@ -228,11 +253,11 @@
                 isActionLocked = false;
                 document.getElementById('forest-btn').innerText = `🌲 СХОДИТЬ В ЛЕС (-${35 - costModifier} Энергии)`;
                 updateStaminaUI();
-                setButtonsDisabled(false);
             }, 3000);
         }
 
         function restAtCamp() {
+            if (isActionLocked || gameIsEnded) return;
             isActionLocked = true;
             setButtonsDisabled(true);
             document.getElementById('rest-btn').innerText = "⏳ ОТДЫХАЕМ (4с)...";
@@ -242,12 +267,12 @@
                 isActionLocked = false;
                 document.getElementById('rest-btn').innerText = "💤 ОТДОХНУТЬ У КОСТРА";
                 updateStaminaUI();
-                setButtonsDisabled(false);
                 addLog("💤 Вы восстановили силы у огня.");
             }, 4000);
         }
 
         function endGame(msg, color) {
+            gameIsEnded = true;
             setButtonsDisabled(true);
             document.getElementById('burn-btn').innerText = msg;
             document.getElementById('burn-btn').style.background = color;
