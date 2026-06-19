@@ -21,6 +21,16 @@ rooms = {}
 def read_root():
     return FileResponse("index.html")
 
+def get_initial_state():
+    return {
+        "weather": "Ясно", 
+        "wood": 15, 
+        "warmth": 100, 
+        "time_left": 120, 
+        "game_over": False, 
+        "victory": False
+    }
+
 async def room_tick(room_code: str):
     """Фоновый цикл: каждую секунду горит костер, тикает время и происходят ивенты"""
     event_timer = 0
@@ -33,9 +43,9 @@ async def room_tick(room_code: str):
         state = room["state"]
         
         if state["game_over"] or state["victory"]:
-            break
+            continue  # Не тикаем, если игра завершена, ждем рестарта
 
-        # Тикаем таймер рассвета
+        # Таймер рассвета
         if state["time_left"] > 0:
             state["time_left"] -= 1
         else:
@@ -44,9 +54,9 @@ async def room_tick(room_code: str):
                 "type": "VICTORY", "state": state,
                 "log": "☀️ Рассвет! Метель утихла, вы смогли пережить эту ночь! 🎉"
             })
-            break
+            continue
 
-        # Логика случайных событий (раз в 25 секунд)
+        # Случайные события (раз в 25 секунд)
         event_timer += 1
         if event_timer >= 25:
             event_timer = 0
@@ -81,7 +91,6 @@ async def room_tick(room_code: str):
                 "type": "GAME_OVER", "state": state,
                 "log": "💀 Лагерь полностью замерз... Буря оказалась сильнее."
             })
-            break
 
         await manager.broadcast_to_room(room_code, {"type": "STATE_UPDATE", "state": state})
 
@@ -92,10 +101,7 @@ class ConnectionManager:
             rooms[room_code] = {
                 "players": {},
                 "player_roles": {},
-                "state": {
-                    "weather": "Ясно", "wood": 15, "warmth": 100, 
-                    "time_left": 120, "game_over": False, "victory": False
-                },
+                "state": get_initial_state(),
                 "task": None
             }
             rooms[room_code]["task"] = asyncio.create_task(room_tick(room_code))
@@ -145,18 +151,32 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
     try:
         while True:
             data = await websocket.receive_json()
-            if room_code not in rooms or rooms[room_code]["state"]["game_over"] or rooms[room_code]["state"]["victory"]:
+            if room_code not in rooms:
                 continue
                 
             state = rooms[room_code]["state"]
             action = data.get("action")
+            
+            # Логика перезапуска игры кнопкой
+            if action == "restart_game":
+                rooms[room_code]["state"] = get_initial_state()
+                await manager.broadcast_to_room(room_code, {
+                    "type": "INIT_STATE", 
+                    "state": rooms[room_code]["state"],
+                    "log": f"🔄 {player_id} разжёг костёр заново. Начинается новая ночь!"
+                })
+                continue
+
+            if state["game_over"] or state["victory"]:
+                continue
+                
             p_role = rooms[room_code]["player_roles"].get(player_id, "survivor")
             
             if action == "burn_one_wood":
                 if state["wood"] >= 1:
-                    # Хранитель костра даёт +8% тепла вместо +5%
                     boost = 8 if p_role == "keeper" else 5
                     state["warmth"] = min(100, state["warmth"] + boost)
+                    state["wood"] -= 1
                     await manager.broadcast_to_room(room_code, {
                         "type": "STATE_UPDATE", "state": state,
                         "log": f"🔥 {player_id} бросил дрово в костёр (+{boost}% тепла)."
@@ -164,15 +184,9 @@ async def websocket_endpoint(websocket: WebSocket, room_code: str, player_id: st
 
             elif action == "go_to_forest":
                 is_blizzard = (state["weather"] == "Буран")
-                # У Проводника и Дровосека меньше шанс заблудиться
-                fail_chance = 0.25
-                if is_blizzard:
-                    fail_chance = 0.40 if p_role in ["lumberjack", "scout"] else 0.70
-                else:
-                    fail_chance = 0.10 if p_role in ["lumberjack", "scout"] else 0.25
+                fail_chance = 0.40 if p_role in ["lumberjack", "scout"] else 0.70 if is_blizzard else 0.25
                 
                 if random.random() > fail_chance:
-                    # Дровосек рубит больше дров
                     min_w, max_w = (7, 12) if p_role == "lumberjack" else (4, 7)
                     added_wood = random.randint(min_w, max_w)
                     state["wood"] += added_wood
