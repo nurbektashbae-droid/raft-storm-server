@@ -6,12 +6,12 @@
     <title>Перевал: Сквозь Метель</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: #121213; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; }
+        body { background: #121213; color: #e2e8f0; font-family: 'Courier New', Courier, monospace; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
         .card { background: #1e1e24; border: 2px solid #3f3f46; border-radius: 12px; padding: 24px; width: 100%; max-width: 400px; text-align: center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); }
         h1 { font-size: 20px; margin-bottom: 20px; color: #f1f5f9; text-transform: uppercase; letter-spacing: 2px; }
         input, select { width: 100%; padding: 12px; background: #27272a; border: 1px solid #4b5563; border-radius: 6px; color: #fff; text-align: center; font-size: 16px; margin-bottom: 12px; }
         select { text-align-last: center; }
-        button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+        button { width: 100%; padding: 14px; background: #ea580c; border: none; border-radius: 6px; color: white; font-weight: bold; font-size: 16px; cursor: pointer; text-transform: uppercase; transition: background 0.2s; }
         button:hover { background: #c2410c; }
         button:disabled { background: #4b5563 !important; cursor: not-allowed; }
         .hidden { display: none; }
@@ -173,7 +173,7 @@
                         document.getElementById('warmth-fill').style.width = data.state.warmth + "%";
                         
                         // Эффект шарфов (снижает затраты выносливости)
-                        if (data.state.upgrades.scarfs) {
+                        if (data.state.upgrades && data.state.upgrades.scarfs) {
                             costModifier = 5;
                             document.getElementById('up-scarfs').innerText = "🧣 Шарфы [КУПЛЕНО]";
                             document.getElementById('up-scarfs').disabled = true;
@@ -183,14 +183,14 @@
                             document.getElementById('up-scarfs').disabled = (globalWood < 20);
                         }
 
-                        if (data.state.upgrades.canopy) {
+                        if (data.state.upgrades && data.state.upgrades.canopy) {
                             document.getElementById('up-canopy').innerText = "⛺ Навес [КУПЛЕНО]";
                             document.getElementById('up-canopy').disabled = true;
                         } else {
                             document.getElementById('up-canopy').disabled = (globalWood < 25);
                         }
 
-                        if (data.state.upgrades.axes) {
+                        if (data.state.upgrades && data.state.upgrades.axes) {
                             document.getElementById('up-axes').innerText = "🪓 Топоры [КУПЛЕНО]";
                             document.getElementById('up-axes').disabled = true;
                         } else {
