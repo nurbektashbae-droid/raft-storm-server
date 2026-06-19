@@ -17,7 +17,7 @@ app.add_middleware(
 
 rooms = {}
 
-# Сервер просто будет брать готовый файл index.html и отдавать его пользователю
+# Эта функция теперь ПРАВИЛЬНО привязана к главной странице
 @app.get("/")
 def read_root():
     return FileResponse("index.html")
